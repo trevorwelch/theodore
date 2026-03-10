@@ -83,7 +83,7 @@ theodore/
 
 **Structured inter-agent contract.** Findings follow a rigid format (`category/severity file:line -- description -> action`), reducing ambiguity in agent-to-agent communication. Verdict logic is deterministic: any major finding blocks approval, 3+ minors block, fewer don't.
 
-**Isolation and resumability.** All work happens in git worktrees with persistent state files, so sessions can be interrupted and resumed across Claude Code restarts.
+**Isolation and resumability.** All work happens in git worktrees with persistent state files, so sessions can be interrupted and resumed across Claude Code restarts. Worktrees are automatically cleaned up when sessions end (approved, failed, or max cycles reached).
 
 ## Writing a good spec
 
