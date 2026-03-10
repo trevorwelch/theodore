@@ -22,6 +22,14 @@ The structured contract between the Reviewer and Builder agents.
 - **major**: Blocking. Must be fixed before approval. Correctness bugs, security issues, architectural violations.
 - **minor**: Non-blocking. Should be fixed but won't block approval alone. Style nits, missing edge case tests, minor performance.
 
+## Multi-file issues
+
+When a finding spans multiple files, use the primary file (where the fix should be applied) as the location and reference the related file(s) in the description:
+
+```
+architecture/major src/api/routes.ts:15 -- Business logic in route handler (also affects src/services/auth.ts) -> Extract to service layer
+```
+
 ## Examples
 
 ```

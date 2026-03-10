@@ -54,7 +54,7 @@ On subsequent cycles, findings from the reviewer AND mutation testing are your t
 ## Rules
 
 - All file operations use **absolute paths** within the worktree
-- NEVER use `cd <path> && git <command>` or any compound `cd && <command>` in Bash. Use `git -C <path>` for git commands, or pass absolute paths directly to tools. Compound cd commands trigger permission prompts that block automation.
+- NEVER use `cd <path> && <command>` or any compound `cd &&` in Bash. Use `git -C <path>` for git commands, or pass absolute paths directly to tools. The reason: compound cd commands require broader Bash permissions that trigger interactive approval prompts, breaking automation. (The orchestrator itself may use `cd &&` for test execution since it has wildcard Bash permissions, but agents do not.)
 - Do NOT commit, push, or create PRs
 - Do NOT modify files outside the scope of the feature spec
 - Do NOT add docstrings, comments, or type annotations beyond what the project conventions require

@@ -72,7 +72,7 @@ Parse the output to extract `branch_name` and `worktree_path` values.
 
 Dispatch **two Explore agents in parallel** into the worktree. Both should explore the worktree path.
 
-**Builder study agent** (model: haiku):
+**Builder study agent** (model: sonnet):
 ```
 Explore the codebase at <worktree_path> and report:
 1. Project language(s) and framework(s)
@@ -86,7 +86,7 @@ Explore the codebase at <worktree_path> and report:
 Be thorough but concise. Format your report with clear headings.
 ```
 
-**Reviewer study agent** (model: haiku):
+**Reviewer study agent** (model: sonnet):
 ```
 Explore the codebase at <worktree_path> and report:
 1. Code style and formatting conventions (indentation, naming patterns, import style)
@@ -232,7 +232,12 @@ For each retry:
 4. If tests pass: break out of inner loop
 5. If tests still fail: continue to next retry
 
-**If tests still fail after all retries**: report failure to user with the last error output, update state `phase: failed`, set `active: false`, and stop.
+**If tests still fail after all retries**: report failure to user with the last error output, update state `phase: failed`, set `active: false`. Clean up the worktree and branch:
+```bash
+git -C <repo_path> worktree remove <worktree_path> --force
+git -C <repo_path> branch -D <branch_name>
+```
+Stop.
 
 ### Step 2b: MUTATE
 
@@ -300,6 +305,16 @@ Survived: 0
 Generate at least 5 mutants total across the implementation files.
 ```
 
+**After the mutation agent returns**, verify the worktree is clean (no leftover mutations):
+```bash
+git -C <worktree_path> diff --quiet || git -C <worktree_path> checkout -- .
+```
+Then run the test suite once more to confirm the code is in a passing state:
+```bash
+bash -c 'cd <worktree_path> && <test_command>'
+```
+If tests fail after this safety check, a mutation was not properly reverted. Dispatch the builder agent in fix mode (same as the VERIFY retry loop) before proceeding.
+
 **Parse the mutation report.**
 
 - If **all mutants killed**: report "Mutation testing passed: <N>/<N> mutants killed." and proceed to Step 3.
@@ -337,9 +352,16 @@ Then create the PR:
 ```bash
 gh pr create --repo <repo_path> --head <branch_name> --title "theodore: <SPEC_NAME>" --body "$(cat <<'EOF'
 ## Spec
-<first 3 lines of spec or a brief summary>
 
-Automated PR created by Theodore build/review loop.
+<full spec contents, or a concise summary if the spec exceeds 40 lines>
+
+## What was built
+
+<brief summary of the implementation based on the builder's BUILD COMPLETE output>
+
+---
+
+*Automated PR by [Theodore](https://github.com/trevorwelch/theodore) build/review loop.*
 EOF
 )"
 ```
@@ -391,6 +413,10 @@ Parse the reviewer agent's output for the verdict line.
 **VERDICT: APPROVED**
 - Update state: `phase: complete`, `active: false`
 - Comment on the PR: `gh pr comment <pr_number> --repo <repo_path> --body "Theodore: Reviewer approved at cycle <N>. PR ready for human review."`
+- Clean up the worktree (the branch and PR persist on the remote):
+  ```bash
+  git -C <repo_path> worktree remove <worktree_path> --force
+  ```
 - Report to user: "Reviewer approved! PR is ready for human review: <pr_url>"
 - Stop the loop.
 
@@ -404,6 +430,10 @@ Parse the reviewer agent's output for the verdict line.
   ```
 - If this was the last cycle (`cycle == max_cycles`):
   - Update state: `phase: max_cycles_reached`, `active: false`
+  - Clean up the worktree (the branch and PR persist on the remote):
+    ```bash
+    git -C <repo_path> worktree remove <worktree_path> --force
+    ```
   - Report to user: "Max cycles (<max_cycles>) reached. Outstanding findings:\n<findings>\nPR: <pr_url>"
   - Stop the loop.
 - Otherwise: increment cycle, loop back to Step 1.
