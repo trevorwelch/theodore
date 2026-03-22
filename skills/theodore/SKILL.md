@@ -8,6 +8,22 @@ allowed-tools: ["Read", "Edit", "Write", "Glob", "Grep", "Bash(*)", "Agent(*)"]
 
 You are the orchestrator. Follow these steps exactly.
 
+## CRITICAL: Autonomous Execution
+
+This is a fully autonomous build/review loop. You MUST execute ALL phases from start to finish in a single, uninterrupted run. **DO NOT** pause, stop, or wait for user input between phases or steps. **DO NOT** treat the completion of a sub-step (agent returning, tool completing, study finishing) as a stopping point. The ONLY reasons to stop are:
+- A terminal state is reached (approved, failed, or max_cycles_reached)
+- An unrecoverable error occurs that you cannot handle
+
+After every agent dispatch, tool call, or phase completion, **immediately proceed to the next step in the same response**. Do not output a status update and then stop. Every response you generate MUST end with either a tool call (the next action) or a terminal state report. If your response would end with just text and no tool call, you are stalling -- add the next action.
+
+Common stall points to avoid:
+- After codebase study agents return: immediately write the state file
+- After builder agent returns: immediately run tests (VERIFY)
+- After tests pass: immediately run mutation testing
+- After mutation testing: immediately publish (PUBLISH)
+- After publishing PR: immediately dispatch reviewer
+- After reviewer returns: immediately parse verdict and act on it
+
 ## Phase 0: Parse Arguments
 
 Parse `$ARGUMENTS` to extract:
@@ -35,16 +51,27 @@ Store this as `PLUGIN_ROOT` for all subsequent file references.
 
 Derive `SPEC_NAME` from the spec filename (strip path and .md extension).
 
-## Phase 1: Resume Check
+## Phase 1: Resume Check & Cleanup
 
-Search for existing active Theodore sessions:
+Search for existing Theodore worktrees:
 ```bash
 find <repo>/.claude/worktrees/theodore-*/.theodore/ -name "state.md" 2>/dev/null
 ```
 
+Also check for orphaned worktrees (directories with no state file):
+```bash
+ls -d <repo>/.claude/worktrees/theodore-*/ 2>/dev/null
+```
+
+**Cleanup orphaned worktrees**: For any worktree directory that has NO `.theodore/state.md` file (or the state file is empty/unreadable), silently clean it up:
+```bash
+git -C <repo> worktree remove <orphaned_worktree_path> --force 2>/dev/null
+git -C <repo> branch -D <branch_from_path> 2>/dev/null
+```
+
 For each state file found, check if it contains `active: true`.
 
-If an active session exists:
+**If an active session exists:**
 - Read the state file to get the current `phase`, `cycle`, and `spec_name`
 - Tell the user: "Found active Theodore session '<spec_name>' at cycle <N>, phase: <phase>."
 - Ask: "Resume this session, or start fresh (which cancels the existing one)?"
@@ -55,7 +82,11 @@ If an active session exists:
   - `publish`: restart Step 3 (PUBLISH) for the current cycle
   - `review`: restart Step 4 (REVIEW) for the current cycle
   - `complete` or `failed` or `max_cycles_reached`: these are terminal states, report status and stop
-- If start fresh: delete the old state file and remove the old worktree (`git worktree remove <path>`), continue to Phase 2
+- If start fresh: clean up the old session (remove worktree and branch), then continue to Phase 2
+
+**If state files exist but none have `active: true`**: These are completed/failed sessions. Clean up their worktrees silently and continue to Phase 2.
+
+**If no state files or worktrees found**: Continue to Phase 2.
 
 ## Phase 2: Setup
 
@@ -100,11 +131,16 @@ Explore the codebase at <worktree_path> and report:
 Be thorough but concise. Format your report with clear headings.
 ```
 
-Collect both study reports.
+Collect both study reports. **Immediately proceed to 2c -- do not stop here.**
 
 ### 2c: Write State File
 
-Read the spec file content and write the initial state file at `<worktree>/.theodore/state.md`:
+If `<worktree>/.theodore/state.md` already exists (from a crashed prior attempt), delete it first:
+```bash
+rm -f <worktree>/.theodore/state.md
+```
+
+Then write the initial state file at `<worktree>/.theodore/state.md`:
 
 ```markdown
 ---
@@ -142,7 +178,7 @@ started_at: "<current UTC timestamp>"
 None yet.
 ```
 
-Report to the user: "Theodore session initialized. Starting build/review loop."
+Report to the user: "Theodore session initialized. Starting build/review loop." **Immediately proceed to Phase 3 -- do not stop here.**
 
 ## Phase 3: The Loop
 
@@ -196,7 +232,7 @@ All file paths must be absolute, within the worktree.
 When done, output your BUILD COMPLETE summary.
 ```
 
-Report builder progress to user.
+Report builder progress to user (1-2 sentences max). **Immediately proceed to Step 2 -- do not stop here.**
 
 ### Step 2: VERIFY
 
@@ -208,7 +244,7 @@ Run the tests from the worktree:
 bash -c 'cd <worktree_path> && <test_command>'
 ```
 
-**If tests pass**: report "Tests passed." and proceed to Step 2b.
+**If tests pass**: report "Tests passed." and **immediately proceed to Step 2b**.
 
 **If tests fail**: enter the inner fix loop (up to `max_retries`):
 
@@ -317,7 +353,7 @@ If tests fail after this safety check, a mutation was not properly reverted. Dis
 
 **Parse the mutation report.**
 
-- If **all mutants killed**: report "Mutation testing passed: <N>/<N> mutants killed." and proceed to Step 3.
+- If **all mutants killed**: report "Mutation testing passed: <N>/<N> mutants killed." and **immediately proceed to Step 3 -- do not stop here.**
 - If **any mutants survived**: these become automatic findings. For each survived mutant, create a finding:
   ```
   testing/major <file>:<line> -- Mutation survived: <description> -> Add test that catches this case
@@ -376,7 +412,7 @@ Add a comment noting the cycle:
 gh pr comment <pr_number> --repo <repo_path> --body "Cycle <N>: Addressed reviewer findings and pushed updates."
 ```
 
-Report PR status to user.
+Report PR status to user (1-2 sentences max). **Immediately proceed to Step 4 -- do not stop here.**
 
 ### Step 4: REVIEW
 
@@ -436,8 +472,8 @@ Parse the reviewer agent's output for the verdict line.
     ```
   - Report to user: "Max cycles (<max_cycles>) reached. Outstanding findings:\n<findings>\nPR: <pr_url>"
   - Stop the loop.
-- Otherwise: increment cycle, loop back to Step 1.
+- Otherwise: increment cycle and **immediately loop back to Step 1 -- do not stop here.**
 
 **No clear verdict found**:
 - Treat as CHANGES_REQUESTED with a single finding: `conventions/major orchestrator:0 -- Reviewer output missing structured verdict -> Re-review with proper VERDICT format`
-- Continue the loop.
+- **Immediately continue the loop -- do not stop here.**
