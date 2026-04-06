@@ -5,8 +5,10 @@ The structured contract between the Reviewer and Builder agents.
 ## Format
 
 ```
-{category}/{severity} {file}:{line} -- {description} -> {action}
+[F{n}] {category}/{severity} {file}:{line} -- {description} -> {action}
 ```
+
+Each finding gets a sequential ID (`[F1]`, `[F2]`, ...) within a review. IDs let the builder reference specific findings when addressing them and let the orchestrator verify each was resolved.
 
 ## Categories
 
@@ -27,37 +29,43 @@ The structured contract between the Reviewer and Builder agents.
 When a finding spans multiple files, use the primary file (where the fix should be applied) as the location and reference the related file(s) in the description:
 
 ```
-architecture/major src/api/routes.ts:15 -- Business logic in route handler (also affects src/services/auth.ts) -> Extract to service layer
+[F1] architecture/major src/api/routes.ts:15 -- Business logic in route handler (also affects src/services/auth.ts) -> Extract to service layer
 ```
 
 ## Examples
 
 ```
-correctness/major src/auth.ts:42 -- Missing null check on user lookup -> Add guard clause before accessing user.email
-testing/minor tests/login.test.ts:8 -- Missing edge case for expired session -> Add test for token expiry scenario
-architecture/major src/api/routes.ts:15 -- Business logic in route handler -> Extract to service layer
-security/major src/db/query.ts:23 -- String interpolation in SQL query -> Use parameterized query
-conventions/minor src/utils/helpers.ts:1 -- File name too generic -> Rename to reflect actual contents
-performance/minor src/feed.ts:30 -- Fetching all records without pagination -> Add limit/offset
+[F1] correctness/major src/auth.ts:42 -- Missing null check on user lookup -> Add guard clause before accessing user.email
+[F2] testing/minor tests/login.test.ts:8 -- Missing edge case for expired session -> Add test for token expiry scenario
+[F3] architecture/major src/api/routes.ts:15 -- Business logic in route handler -> Extract to service layer
+[F4] security/major src/db/query.ts:23 -- String interpolation in SQL query -> Use parameterized query
+[F5] conventions/minor src/utils/helpers.ts:1 -- File name too generic -> Rename to reflect actual contents
+[F6] performance/minor src/feed.ts:30 -- Fetching all records without pagination -> Add limit/offset
 ```
 
 ## Verdict Format
 
-The reviewer MUST end their review with exactly one of:
+The reviewer MUST end their review with a JSON verdict block inside a fenced code block tagged `json-verdict`:
 
+Approved (no findings, or 1-2 minor):
+````
+```json-verdict
+{"verdict": "APPROVED", "findings": []}
 ```
-VERDICT: APPROVED
-```
+````
 
-or
-
+Approved with minor notes (1-2 minor findings — non-blocking):
+````
+```json-verdict
+{"verdict": "APPROVED", "findings": ["[F1] conventions/minor src/utils/helpers.ts:1 -- File name too generic -> Rename to reflect actual contents"]}
 ```
-VERDICT: CHANGES_REQUESTED
+````
 
-FINDINGS:
-{finding 1}
-{finding 2}
-...
+Changes requested:
+````
+```json-verdict
+{"verdict": "CHANGES_REQUESTED", "findings": ["[F1] correctness/major src/auth.ts:42 -- Missing null check -> Add guard clause", "[F2] testing/minor tests/login.test.ts:8 -- Missing edge case -> Add expired session test"]}
 ```
+````
 
 Major findings block approval. 3 or more minor findings also block approval. 1-2 minor findings do not block.

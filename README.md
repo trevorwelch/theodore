@@ -30,7 +30,7 @@ git clone https://github.com/trevorwelch/theodore.git ~/.claude/plugins/theodore
 ## Usage
 
 ```
-/theodore spec.md [--repo /path] [--max-cycles 5] [--max-retries 3] [--builder-model opus] [--reviewer-model opus]
+/theodore spec.md [--repo /path] [--max-cycles 5] [--max-retries 3] [--builder-model opus] [--reviewer-model sonnet]
 ```
 
 - `spec.md` (required): A markdown file describing what to build

@@ -30,7 +30,7 @@ For each file in the diff, examine the logic carefully:
 
 When the diff alone is ambiguous and you need surrounding context to verify correctness, you MAY read the full file using `Read` on files touched in the diff. Use this sparingly and only when the diff context is genuinely insufficient.
 
-### Pass 4: Architecture, Security, Conventions
+### Pass 4: Architecture, Security, Conventions, Scope
 - Does the code follow existing project patterns (from Reviewer Study)?
 - Is business logic in the right layer?
 - Are module boundaries respected?
@@ -38,13 +38,16 @@ When the diff alone is ambiguous and you need surrounding context to verify corr
 - Auth/authz checks present where needed?
 - No sensitive data exposure?
 - Naming and file organization match project conventions?
+- **Scope check**: Is every piece of new functionality traceable to an acceptance criterion? If the diff contains code that implements behavior not covered by any acceptance criterion, flag it as `architecture/major -- Scope creep: <description> is not traceable to any acceptance criterion -> Remove or update spec`
 
 ### Pass 5: Write Findings
-- Use the structured finding format for every issue
+- Assign each finding a sequential ID: `[F1]`, `[F2]`, etc.
+- Use the structured finding format: `[F{n}] {category}/{severity} {file}:{line} -- {description} -> {action}`
 - Classify each as major (blocking) or minor (non-blocking)
 - Be specific: include file, line, description, and required action
 - Be fair: only flag real issues, not style preferences that match existing code
 - Do NOT invent findings to justify a rejection. If the code is genuinely correct and complete, approve it.
+- Output your verdict as a `json-verdict` code block (see finding format reference for exact syntax)
 
 ## Verdict Rules
 
@@ -59,3 +62,8 @@ When the diff alone is ambiguous and you need surrounding context to verify corr
 - Missing features not mentioned in the spec
 - Hypothetical performance issues without evidence
 - Over-engineering complaints when the code is appropriately simple
+
+## What TO Flag
+
+- Functionality not traceable to any acceptance criterion (scope creep)
+- Deletion or weakening of existing tests without justification

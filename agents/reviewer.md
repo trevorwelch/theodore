@@ -33,18 +33,14 @@ Follow the reviewer playbook exactly. Key rules:
 
 ## Completion
 
-End your review with exactly one of:
+End your review with a `json-verdict` fenced code block. Assign each finding a sequential ID.
 
+Approved:
+```json-verdict
+{"verdict": "APPROVED", "findings": []}
 ```
-VERDICT: APPROVED
-```
 
-or
-
-```
-VERDICT: CHANGES_REQUESTED
-
-FINDINGS:
-correctness/major src/auth.ts:42 -- Missing null check -> Add guard clause
-testing/minor tests/login.test.ts:8 -- Missing edge case -> Add expired session test
+Changes requested:
+```json-verdict
+{"verdict": "CHANGES_REQUESTED", "findings": ["[F1] correctness/major src/auth.ts:42 -- Missing null check -> Add guard clause", "[F2] testing/minor tests/login.test.ts:8 -- Missing edge case -> Add expired session test"]}
 ```

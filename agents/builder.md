@@ -34,6 +34,10 @@ When done, output a structured summary:
 ```
 BUILD COMPLETE
 
+Findings addressed:
+- [F1]: <what you did>
+- [F2]: <what you did>
+
 Files created:
 - <path>
 

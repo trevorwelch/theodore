@@ -1,6 +1,6 @@
 ---
 description: "Autonomous dual-agent build/review loop"
-argument-hint: "spec.md [--repo /path] [--max-cycles 5] [--max-retries 3] [--builder-model opus] [--reviewer-model opus]"
+argument-hint: "spec.md [--repo /path] [--max-cycles 5] [--max-retries 3] [--builder-model opus] [--reviewer-model sonnet]"
 allowed-tools: ["Read", "Edit", "Write", "Glob", "Grep", "Bash(*)", "Agent(*)"]
 ---
 
@@ -32,11 +32,11 @@ Parse `$ARGUMENTS` to extract:
 - `--max-cycles <N>` (optional, default: 5)
 - `--max-retries <N>` (optional, default: 3)
 - `--builder-model <model>` (optional, default: opus)
-- `--reviewer-model <model>` (optional, default: opus)
+- `--reviewer-model <model>` (optional, default: sonnet — deliberately different from builder to reduce self-agreement bias)
 
 If no arguments or no spec file provided, output this usage message and stop:
 ```
-Usage: /theodore spec.md [--repo /path] [--max-cycles 5] [--max-retries 3] [--builder-model opus] [--reviewer-model opus]
+Usage: /theodore spec.md [--repo /path] [--max-cycles 5] [--max-retries 3] [--builder-model opus] [--reviewer-model sonnet]
 
 Theodore is a dual-agent autonomous build/review loop.
 A Builder agent writes code (TDD-style) and a Reviewer agent reviews the PR,
@@ -224,6 +224,11 @@ Loop from `cycle` to `max_cycles`:
 
 Update state file: set `phase: build`, `cycle: <current>`
 
+Tag the current state for rollback and logging:
+```bash
+git -C <worktree_path> tag -f "theodore/cycle-<N>-start"
+```
+
 Dispatch a **general-purpose Agent** (model: `builder_model` from state).
 
 On **cycle 1**, use this prompt:
@@ -329,76 +334,35 @@ You are a Mutation Testing agent in a Theodore build/review loop.
 
 Working directory: <worktree_path>
 Plugin root: <PLUGIN_ROOT>
+Test command: <test_command>
 
-Read the state file at <worktree_path>/.theodore/state.md for spec context, the test command,
-and the builder study (to understand project patterns).
+Read these files:
+1. Mutation testing playbook: <PLUGIN_ROOT>/skills/theodore/references/mutation-testing-playbook.md
+2. State file: <worktree_path>/.theodore/state.md (for spec context and builder study)
 
-Your job is to verify test quality through mutation testing. Follow these steps:
-
-1. IDENTIFY TARGETS: Read the implementation files created/modified for this spec (NOT test files).
-   For each file, identify 3-5 critical logic points: conditionals, boundary checks, error handling,
-   return values, arithmetic operations.
-
-2. GENERATE MUTANTS: For each target, create a small, realistic mutation. Good mutations:
-   - Flip a conditional (< to <=, == to !=)
-   - Change a boundary value (+1, -1)
-   - Remove an error check or early return
-   - Swap a variable for a related one
-   - Change an operator (+ to -, && to ||)
-   - Return a wrong value (null, empty, hardcoded)
-
-   Bad mutations (DO NOT generate these):
-   - Syntax errors (the code must still parse)
-   - Deleting entire functions (too obvious)
-   - Changes unrelated to spec requirements
-
-3. TEST EACH MUTANT: For each mutation:
-   a. Apply the mutation using the Edit tool
-   b. Run the test command: bash -c 'cd <worktree_path> && <test_command>'
-   c. Record the result: KILLED (test failed = good) or SURVIVED (test passed = bad)
-   d. IMMEDIATELY revert the mutation using the Edit tool (restore the original code)
-   e. Verify the revert is correct before moving to the next mutant
-
-   CRITICAL: You MUST revert each mutation before applying the next one. Never leave a mutation
-   in place. After all mutants are tested, run the full test suite once more to confirm the
-   code is back to its original, passing state.
-
-4. REPORT: Output your results in this exact format:
-
-MUTATION REPORT
-Mutants tested: <N>
-Killed: <N>
-Survived: <N>
-
-SURVIVED MUTANTS:
-<file>:<line> -- <description of mutation> -- <what this means the tests are missing>
-...
-
-If all mutants were killed, output:
-MUTATION REPORT
-Mutants tested: <N>
-Killed: <N>
-Survived: 0
-
-Generate at least 5 mutants total across the implementation files.
+Follow the playbook exactly. Only mutate files and lines touched in this cycle.
 ```
 
 **After the mutation agent returns**, verify the worktree is clean (no leftover mutations):
 ```bash
-git -C <worktree_path> diff --quiet || git -C <worktree_path> checkout -- .
+git -C <worktree_path> diff
+```
+If the diff is non-empty, a mutation was not properly reverted. Reset the worktree:
+```bash
+git -C <worktree_path> checkout -- .
 ```
 Then run the test suite once more to confirm the code is in a passing state:
 ```bash
 bash -c 'cd <worktree_path> && <test_command>'
 ```
-If tests fail after this safety check, a mutation was not properly reverted. Dispatch the builder agent in fix mode (same as the VERIFY retry loop) before proceeding.
+If tests fail after this safety check, a mutation leaked into the code. Dispatch the builder agent in fix mode (same as the VERIFY retry loop) before proceeding.
 
 **Parse the mutation report.**
 
 - If **all mutants killed**: report "Mutation testing passed: <N>/<N> mutants killed." and **immediately proceed to Step 3 -- do not stop here.**
-- If **any mutants survived**: these become automatic findings. For each survived mutant, create a finding:
+- If **any mutants survived**: these become automatic findings. For each survived mutant, create a finding with a sequential ID (starting from `[M1]` to distinguish from reviewer findings):
   ```
-  testing/major <file>:<line> -- Mutation survived: <description> -> Add test that catches this case
+  [M1] testing/major <file>:<line> -- Mutation survived: <description> -> Add test that catches this case
   ```
   Append these findings to the state file under a new section:
   ```
@@ -449,9 +413,23 @@ Parse the PR URL and number from gh output. Update the state file: set `pr_numbe
 ```bash
 git -C <worktree_path> push
 ```
-Add a comment noting the cycle:
+Add a structured comment detailing the cycle. Build the comment body from the builder's BUILD COMPLETE summary:
 ```bash
-gh pr comment <pr_number> --repo <repo_path> --body "Cycle <N>: Addressed reviewer findings and pushed updates."
+gh pr comment <pr_number> --repo <repo_path> --body "$(cat <<'EOF'
+## Cycle <N>
+
+### Findings Addressed
+- [F1]: <what was done>
+- [F2]: <what was done>
+- [M1]: <what was done> (if mutation findings existed)
+
+### Tests Added
+- <test descriptions from builder summary>
+
+### Mutations
+- <N>/<N> killed (or "No mutation cycle" if mutations passed on previous cycle)
+EOF
+)"
 ```
 
 Report PR status to user (1-2 sentences max). **Immediately proceed to Step 4 -- do not stop here.**
@@ -460,7 +438,10 @@ Report PR status to user (1-2 sentences max). **Immediately proceed to Step 4 --
 
 Update state file: set `phase: review`
 
-Dispatch a **general-purpose Agent** (model: `reviewer_model` from state):
+Dispatch a **general-purpose Agent** (model: `reviewer_model` from state).
+
+**Important — context isolation**: The reviewer must NOT see the Builder Study section of the state file (it contains builder-specific context that creates self-agreement bias). Before dispatching, extract only the sections the reviewer needs: **Spec**, **Reviewer Study**, **Acceptance Criteria**, and any prior **Findings** sections. Pass these directly in the prompt rather than pointing the reviewer at the full state file.
+
 ```
 You are the Reviewer agent in a Theodore build/review loop.
 
@@ -470,28 +451,45 @@ Worktree: <worktree_path>
 Cycle: <N> of <max_cycles>
 Plugin root: <PLUGIN_ROOT>
 
-Read these files to get your instructions and context:
+Read these files to get your instructions:
 1. Reviewer playbook: <PLUGIN_ROOT>/skills/theodore/references/reviewer-playbook.md
 2. Finding format: <PLUGIN_ROOT>/skills/theodore/references/finding-format.md
-3. State file: <worktree_path>/.theodore/state.md (for spec, acceptance criteria, and codebase context)
 
-Then get the PR diff:
+Here is your context (extracted from the session state):
+
+## Spec
+<spec contents from state file>
+
+## Reviewer Study
+<reviewer study section from state file>
+
+## Acceptance Criteria
+<acceptance criteria section from state file>
+
+## Prior Findings
+<findings sections from state file, or "None" if cycle 1>
+
+Now get the PR diff:
   gh pr diff <pr_number> --repo <repo_path>
 
 Review the diff following the reviewer playbook exactly. Your primary checklist is the
-Acceptance Criteria from the state file. For each criterion, verify implementation exists
-and a test proves it works at the right level (e2e/integration for user-facing behavior,
-not just unit tests). Mark each criterion PASS or FAIL. If you need surrounding context to
-verify correctness for any file in the diff, you may read the full file at its worktree
-path (<worktree_path>/...). Output your verdict.
+Acceptance Criteria. For each criterion, verify implementation exists and a test proves
+it works at the right level (e2e/integration for user-facing behavior, not just unit tests).
+Mark each criterion PASS or FAIL. If you need surrounding context to verify correctness
+for any file in the diff, you may read the full file at its worktree path (<worktree_path>/...).
+
+Output your verdict as a json-verdict code block.
 ```
 
 ### Step 5: Check Verdict
 
-Parse the reviewer agent's output for the verdict line.
+Parse the reviewer agent's output for the `json-verdict` code block. Extract the JSON object and read the `verdict` and `findings` fields.
 
-**VERDICT: APPROVED**
+**If no `json-verdict` block is found**: Treat as CHANGES_REQUESTED with a single finding: `[F1] conventions/major orchestrator:0 -- Reviewer output missing json-verdict block -> Re-review with proper verdict format`. **Immediately continue the loop — do not stop here.**
+
+**`"verdict": "APPROVED"`**
 - Update state: `phase: complete`, `active: false`
+- If the `findings` array is non-empty (1-2 minor notes), append them to the state file for reference
 - Comment on the PR: `gh pr comment <pr_number> --repo <repo_path> --body "Theodore: Reviewer approved at cycle <N>. PR ready for human review."`
 - Clean up the worktree (the branch and PR persist on the remote):
   ```bash
@@ -500,13 +498,13 @@ Parse the reviewer agent's output for the verdict line.
 - Report to user: "Reviewer approved! PR is ready for human review: <pr_url>"
 - Stop the loop.
 
-**VERDICT: CHANGES_REQUESTED**
-- Extract the FINDINGS block from the reviewer output (everything after `FINDINGS:`)
+**`"verdict": "CHANGES_REQUESTED"`**
+- Extract the `findings` array from the JSON
 - Append findings to the state file under a new section:
   ```
   ## Findings (Cycle <N>)
 
-  <extracted findings>
+  <each finding from the array, one per line>
   ```
 - If this was the last cycle (`cycle == max_cycles`):
   - Update state: `phase: max_cycles_reached`, `active: false`
@@ -517,7 +515,3 @@ Parse the reviewer agent's output for the verdict line.
   - Report to user: "Max cycles (<max_cycles>) reached. Outstanding findings:\n<findings>\nPR: <pr_url>"
   - Stop the loop.
 - Otherwise: increment cycle and **immediately loop back to Step 1 -- do not stop here.**
-
-**No clear verdict found**:
-- Treat as CHANGES_REQUESTED with a single finding: `conventions/major orchestrator:0 -- Reviewer output missing structured verdict -> Re-review with proper VERDICT format`
-- **Immediately continue the loop -- do not stop here.**

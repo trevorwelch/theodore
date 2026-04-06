@@ -47,11 +47,13 @@ On subsequent cycles, findings from the reviewer AND mutation testing are your t
 2. Address every **major** finding (these are blocking)
 3. Address **minor** findings where reasonable
 4. For each finding:
-   - Parse the format: `{category}/{severity} {file}:{line} -- {description} -> {action}`
+   - Parse the format: `[F{n}] {category}/{severity} {file}:{line} -- {description} -> {action}`
    - Make the specified change
+   - Reference the finding ID in your BUILD COMPLETE summary (e.g., "Addressed [F1]: added null check")
    - Run tests after each change to catch regressions
 5. **Mutation findings** specifically mean the tests are too weak at that point in the code. Add targeted tests that would catch the described mutation. Do not just strengthen assertions on existing tests; write new test cases that exercise the specific logic path.
 6. After all findings are addressed, continue with any unfinished spec work
+7. **Never delete or weaken existing tests** to resolve a finding. Test count and assertion count must be non-decreasing across cycles.
 
 ## Rules
 
