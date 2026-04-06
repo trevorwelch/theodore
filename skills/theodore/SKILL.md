@@ -46,8 +46,15 @@ All work happens in an isolated git worktree. Your main branch is never touched.
 
 Read the spec file. If it doesn't exist, report the error and stop.
 
-Resolve the plugin root by running: `echo "${CLAUDE_PLUGIN_ROOT}"`
-Store this as `PLUGIN_ROOT` for all subsequent file references.
+**PLUGIN_ROOT resolution (mandatory, do this FIRST before any file references):**
+```bash
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}"
+# Fallback: resolve from the skill symlink's parent structure
+if [ -z "$PLUGIN_ROOT" ]; then
+  PLUGIN_ROOT="$(cd "$(dirname "$(readlink -f "$0")")/../.." 2>/dev/null && pwd)"
+fi
+```
+Run: `echo "${CLAUDE_PLUGIN_ROOT}"` to get `PLUGIN_ROOT`. If empty, resolve it by reading the skill symlink target (`readlink ~/.claude/skills/theodore`) and stripping the trailing `/skills/theodore` to get the plugin root directory. **All script/agent/reference paths MUST use `PLUGIN_ROOT`, never the skill directory path.** The skill directory only contains `SKILL.md` and `references/` — scripts, agents, and hooks are at the plugin root.
 
 Derive `SPEC_NAME` from the spec filename (strip path and .md extension).
 

@@ -21,45 +21,27 @@ spec.md --> [Builder] --> tests pass? --> [Mutation Testing] --> [PR] --> [Revie
 
 ## Installation
 
-### Option A: Persistent local install (recommended for development)
-
-Clone the repo wherever you want it, then register it in Claude Code's plugin registry:
+Clone the repo and register it as a local plugin:
 
 ```bash
-# Clone to a convenient location
 git clone https://github.com/trevorwelch/theodore.git ~/coding/theodore
-
-# Register in Claude Code's plugin registry
-# Add this entry to ~/.claude/plugins/installed_plugins.json under "plugins":
-#
-#   "theodore@local": [
-#     {
-#       "scope": "user",
-#       "installPath": "/absolute/path/to/theodore",
-#       "version": "1.0.0",
-#       "installedAt": "2026-01-01T00:00:00.000Z",
-#       "lastUpdated": "2026-01-01T00:00:00.000Z"
-#     }
-#   ]
 ```
 
-Restart Claude Code. Verify with `claude plugins list` — you should see `theodore@local`.
+Add this entry to `~/.claude/plugins/installed_plugins.json` under `"plugins"`:
 
-### Option B: Session-only (no registry edit)
-
-```bash
-claude --plugin-dir ~/coding/theodore
+```json
+"theodore@local": [
+  {
+    "scope": "user",
+    "installPath": "/absolute/path/to/theodore",
+    "version": "1.0.0",
+    "installedAt": "2026-01-01T00:00:00.000Z",
+    "lastUpdated": "2026-01-01T00:00:00.000Z"
+  }
+]
 ```
 
-This loads Theodore for the current session only.
-
-### Option C: Direct clone to plugins directory
-
-```bash
-git clone https://github.com/trevorwelch/theodore.git ~/.claude/plugins/cache/local/theodore/1.0.0
-```
-
-Then add the registry entry from Option A with `installPath` pointing to that cache path.
+Restart Claude Code. Verify with `claude plugins list`.
 
 ## Usage
 
