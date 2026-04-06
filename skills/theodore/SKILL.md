@@ -133,7 +133,39 @@ Be thorough but concise. Format your report with clear headings.
 
 Collect both study reports. **Immediately proceed to 2c -- do not stop here.**
 
-### 2c: Write State File
+### 2c: Define Acceptance Criteria
+
+Dispatch a **general-purpose Agent** (model: sonnet):
+```
+You are an Acceptance Criteria agent in a Theodore build/review loop.
+
+Plugin root: <PLUGIN_ROOT>
+Worktree: <worktree_path>
+
+Read these files:
+1. Acceptance criteria guide: <PLUGIN_ROOT>/skills/theodore/references/acceptance-criteria-guide.md
+2. The feature spec (provided below)
+
+Feature Spec:
+<full contents of the spec file>
+
+Codebase Context:
+<builder study report — so the agent knows what test frameworks/tools are available>
+
+Generate acceptance criteria following the guide. Prefer criteria that verify behavior
+the way a human would experience it (e2e tests for web apps, realistic API calls for
+services, actual CLI invocations for tools). Unit-level criteria are supporting evidence,
+not the primary eval.
+
+If the spec already contains an "Acceptance Criteria" section, refine and formalize it
+into the structured format rather than generating from scratch. Preserve the user's intent.
+
+Output ONLY the acceptance criteria in the specified format.
+```
+
+Collect the acceptance criteria output. **Immediately proceed to 2d -- do not stop here.**
+
+### 2d: Write State File
 
 If `<worktree>/.theodore/state.md` already exists (from a crashed prior attempt), delete it first:
 ```bash
@@ -173,6 +205,10 @@ started_at: "<current UTC timestamp>"
 
 <reviewer study report>
 
+## Acceptance Criteria
+
+<acceptance criteria output from Phase 2c>
+
 ## Findings
 
 None yet.
@@ -203,6 +239,11 @@ Read these files to get your instructions and context:
 2. Finding format: <PLUGIN_ROOT>/skills/theodore/references/finding-format.md
 3. State file: <worktree_path>/.theodore/state.md
 
+IMPORTANT: The state file contains an "Acceptance Criteria" section. These criteria are
+your primary targets. Every criterion must have a corresponding test. Write tests that
+verify behavior the way a human would experience it (e2e for web apps, realistic API calls
+for services). Unit tests are supporting evidence, not the primary eval.
+
 Follow the "Cycle 1: Fresh Build" section of the builder playbook.
 All file paths must be absolute, within the worktree.
 
@@ -225,8 +266,9 @@ Read these files to get your instructions and context:
 IMPORTANT: The state file contains "Findings" and/or "Mutation Findings" sections with
 feedback from the previous cycle. You MUST address ALL major findings before any new work.
 Mutation findings mean the tests failed to catch a deliberate bug at that location -- you
-must add tests that would catch it. Follow the "Cycle 2+: Address Findings First" section
-of the builder playbook.
+must add tests that would catch it. The "Acceptance Criteria" section defines your primary
+targets. Every criterion must still have a passing test. Follow the "Cycle 2+: Address
+Findings First" section of the builder playbook.
 All file paths must be absolute, within the worktree.
 
 When done, output your BUILD COMPLETE summary.
@@ -431,13 +473,15 @@ Plugin root: <PLUGIN_ROOT>
 Read these files to get your instructions and context:
 1. Reviewer playbook: <PLUGIN_ROOT>/skills/theodore/references/reviewer-playbook.md
 2. Finding format: <PLUGIN_ROOT>/skills/theodore/references/finding-format.md
-3. State file: <worktree_path>/.theodore/state.md (for spec and codebase context only)
+3. State file: <worktree_path>/.theodore/state.md (for spec, acceptance criteria, and codebase context)
 
 Then get the PR diff:
   gh pr diff <pr_number> --repo <repo_path>
 
-Review the diff following the reviewer playbook exactly. You MUST include an explicit
-spec requirement checklist in your review output. If you need surrounding context to
+Review the diff following the reviewer playbook exactly. Your primary checklist is the
+Acceptance Criteria from the state file. For each criterion, verify implementation exists
+and a test proves it works at the right level (e2e/integration for user-facing behavior,
+not just unit tests). Mark each criterion PASS or FAIL. If you need surrounding context to
 verify correctness for any file in the diff, you may read the full file at its worktree
 path (<worktree_path>/...). Output your verdict.
 ```

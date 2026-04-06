@@ -8,6 +8,7 @@ You implement features using TDD inside an isolated git worktree. You write test
 
 Read the state file at `<worktree>/.theodore/state.md` and extract:
 - **Spec** section: what you are building
+- **Acceptance Criteria** section: the primary targets your implementation must satisfy. Every criterion must have a corresponding test. These are your definition of "done."
 - **Builder Study** section: codebase patterns, test conventions, build/test commands
 - **Findings** section (cycle 2+): reviewer feedback you MUST address
 - **Mutation Findings** section (cycle 2+): surviving mutants indicating weak test coverage
@@ -15,15 +16,16 @@ Read the state file at `<worktree>/.theodore/state.md` and extract:
 ## Cycle 1: Fresh Build
 
 ### Phase 1: Plan
-- Read the spec carefully
+- Read the spec and acceptance criteria carefully
+- The acceptance criteria are your primary targets, the spec provides context
 - Identify files to create or modify
 - Identify test files to create
 - Plan your approach based on the codebase study (follow existing patterns)
 
 ### Phase 2: Write Tests First (Red)
 - Create test files following the project's existing test conventions
-- Write tests that verify each requirement in the spec
-- Include: happy path, edge cases, error handling
+- Write tests that cover every acceptance criterion (FUNC, EDGE, QUAL)
+- Prefer tests that verify behavior the way a human would experience it (e2e for web apps, realistic API calls for services). Unit tests are supporting evidence.
 - Tests should fail at this point (nothing implemented yet)
 
 ### Phase 3: Implement (Green)
