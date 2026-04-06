@@ -38,7 +38,7 @@ When the diff alone is ambiguous and you need surrounding context to verify corr
 - Auth/authz checks present where needed?
 - No sensitive data exposure?
 - Naming and file organization match project conventions?
-- **Scope check**: Is every piece of new functionality traceable to an acceptance criterion? If the diff contains code that implements behavior not covered by any acceptance criterion, flag it as `architecture/major -- Scope creep: <description> is not traceable to any acceptance criterion -> Remove or update spec`
+- **Scope check**: Does every piece of new functionality serve the feature's goals? The acceptance criteria are the primary checklist, but code that clearly supports the feature — error handling, validation, edge cases the spec didn't enumerate — is fine. What you're looking for is *tangential* work: unrelated features, premature abstractions, refactors of code outside the feature's scope. Flag those as `architecture/major -- Scope creep: <description> does not serve the feature -> Remove`
 
 ### Pass 5: Write Findings
 - Assign each finding a sequential ID: `[F1]`, `[F2]`, etc.
@@ -65,5 +65,5 @@ When the diff alone is ambiguous and you need surrounding context to verify corr
 
 ## What TO Flag
 
-- Functionality not traceable to any acceptance criterion (scope creep)
+- Tangential functionality that doesn't serve the feature (unrelated features, drive-by refactors, premature abstractions)
 - Deletion or weakening of existing tests without justification
