@@ -21,11 +21,45 @@ spec.md --> [Builder] --> tests pass? --> [Mutation Testing] --> [PR] --> [Revie
 
 ## Installation
 
-Clone this repo into your Claude Code plugins directory:
+### Option A: Persistent local install (recommended for development)
+
+Clone the repo wherever you want it, then register it in Claude Code's plugin registry:
 
 ```bash
-git clone https://github.com/trevorwelch/theodore.git ~/.claude/plugins/theodore
+# Clone to a convenient location
+git clone https://github.com/trevorwelch/theodore.git ~/coding/theodore
+
+# Register in Claude Code's plugin registry
+# Add this entry to ~/.claude/plugins/installed_plugins.json under "plugins":
+#
+#   "theodore@local": [
+#     {
+#       "scope": "user",
+#       "installPath": "/absolute/path/to/theodore",
+#       "version": "1.0.0",
+#       "installedAt": "2026-01-01T00:00:00.000Z",
+#       "lastUpdated": "2026-01-01T00:00:00.000Z"
+#     }
+#   ]
 ```
+
+Restart Claude Code. Verify with `claude plugins list` — you should see `theodore@local`.
+
+### Option B: Session-only (no registry edit)
+
+```bash
+claude --plugin-dir ~/coding/theodore
+```
+
+This loads Theodore for the current session only.
+
+### Option C: Direct clone to plugins directory
+
+```bash
+git clone https://github.com/trevorwelch/theodore.git ~/.claude/plugins/cache/local/theodore/1.0.0
+```
+
+Then add the registry entry from Option A with `installPath` pointing to that cache path.
 
 ## Usage
 
@@ -38,7 +72,7 @@ git clone https://github.com/trevorwelch/theodore.git ~/.claude/plugins/theodore
 - `--max-cycles`: Maximum build/review iterations (default: 5)
 - `--max-retries`: Maximum test-fix retries per cycle (default: 3)
 - `--builder-model`: Model for the Builder agent (default: opus)
-- `--reviewer-model`: Model for the Reviewer agent (default: opus)
+- `--reviewer-model`: Model for the Reviewer agent (default: sonnet — different model from builder to reduce self-agreement bias)
 
 ### Cancel a session
 
