@@ -19,8 +19,8 @@ After every agent dispatch, tool call, or phase completion, **immediately procee
 Common stall points to avoid:
 - After codebase study agents return: immediately write the state file
 - After builder agent returns: immediately run tests (VERIFY)
-- After tests pass: immediately run mutation testing
-- After mutation testing: immediately publish (PUBLISH)
+- After tests pass: immediately run the challenge phase
+- After the challenge phase passes or skips: immediately publish (PUBLISH)
 - After publishing PR: immediately dispatch reviewer
 - After reviewer returns: immediately parse verdict and act on it
 
@@ -85,7 +85,7 @@ For each state file found, check if it contains `active: true`.
 - If resume: read the full state file, set variables from its frontmatter, and resume based on `phase`:
   - `build`: restart Step 1 (BUILD) for the current cycle
   - `verify`: restart Step 2 (VERIFY) for the current cycle
-  - `mutate`: restart Step 2b (MUTATE) for the current cycle
+  - `challenge` or `mutate`: restart Step 2b (CHALLENGE) for the current cycle
   - `publish`: restart Step 3 (PUBLISH) for the current cycle
   - `review`: restart Step 4 (REVIEW) for the current cycle
   - `complete` or `failed` or `max_cycles_reached`: these are terminal states, report status and stop
@@ -229,7 +229,10 @@ Loop from `cycle` to `max_cycles`:
 
 ### Step 1: BUILD
 
-Update state file: set `phase: build`, `cycle: <current>`
+Update state file:
+```bash
+"${PLUGIN_ROOT}/scripts/state-set.sh" --state <worktree_path>/.theodore/state.md --phase build --cycle <current>
+```
 
 Tag the current state for rollback and logging:
 ```bash
@@ -275,10 +278,11 @@ Read these files to get your instructions and context:
 2. Finding format: <PLUGIN_ROOT>/skills/theodore/references/finding-format.md
 3. State file: <worktree_path>/.theodore/state.md
 
-IMPORTANT: The state file contains "Findings" and/or "Mutation Findings" sections with
+IMPORTANT: The state file contains "Findings" and/or "Challenge Report" sections with
 feedback from the previous cycle. You MUST address ALL major findings before any new work.
-Mutation findings mean the tests failed to catch a deliberate bug at that location -- you
-must add tests that would catch it. The "Acceptance Criteria" section defines your primary
+Challenge findings from logic mutation mean the tests failed to catch a deliberate bug at
+that location -- you must add tests that would catch it. A skipped challenge is informational
+and does not require a code change. The "Acceptance Criteria" section defines your primary
 targets. Every criterion must still have a passing test. Follow the "Cycle 2+: Address
 Findings First" section of the builder playbook.
 All file paths must be absolute, within the worktree.
@@ -290,7 +294,10 @@ Report builder progress to user (1-2 sentences max). **Immediately proceed to St
 
 ### Step 2: VERIFY
 
-Update state file: set `phase: verify`
+Update state file:
+```bash
+"${PLUGIN_ROOT}/scripts/state-set.sh" --state <worktree_path>/.theodore/state.md --phase verify
+```
 
 Extract the `test_command` from the state file frontmatter.
 Run the tests from the worktree:
@@ -324,69 +331,162 @@ For each retry:
 
 **If tests still fail after all retries**: report failure to user with the last error output, update state `phase: failed`, set `active: false`. Clean up the worktree and branch:
 ```bash
+"${PLUGIN_ROOT}/scripts/state-set.sh" --state <worktree_path>/.theodore/state.md --phase failed --active false
+```
+```bash
 git -C <repo_path> worktree remove <worktree_path> --force
 git -C <repo_path> branch -D <branch_name>
 ```
 Stop.
 
-### Step 2b: MUTATE
+### Step 2b: CHALLENGE
 
-Update state file: set `phase: mutate`
-
-This step verifies test quality by introducing small, deliberate bugs (mutants) into the implementation and checking that the tests catch them. A surviving mutant means the tests are too weak.
-
-Dispatch a **general-purpose Agent** (model: `builder_model` from state):
+Update state file:
+```bash
+"${PLUGIN_ROOT}/scripts/state-set.sh" --state <worktree_path>/.theodore/state.md --phase challenge
 ```
-You are a Mutation Testing agent in a Theodore build/review loop.
+
+This step runs a small, relevant falsification pass after tests pass. It may run mutation
+testing for logic-heavy changes, or it may skip with a concrete reason when no reliable
+automated challenge fits the work. A skipped challenge is acceptable; do not force noisy
+mutation testing onto docs, styling, configuration, generated files, or broad mechanical
+refactors.
+
+### 2b-1: Select Challenge Strategy
+
+Dispatch a **general-purpose Agent** (model: `reviewer_model` from state):
+```
+You are a Challenge Strategy agent in a Theodore build/review loop.
 
 Working directory: <worktree_path>
 Plugin root: <PLUGIN_ROOT>
 Test command: <test_command>
+Cycle start tag: theodore/cycle-<N>-start
+
+Read these files:
+1. Challenge strategy guide: <PLUGIN_ROOT>/skills/theodore/references/challenge-strategy-guide.md
+2. State file: <worktree_path>/.theodore/state.md
+
+Inspect the changed files for this cycle:
+  <PLUGIN_ROOT>/scripts/cycle-diff.sh --worktree <worktree_path> --cycle <N> --name-only
+
+Choose only one supported strategy: logic-mutation or skip.
+Be conservative. If mutation is unlikely to produce meaningful evidence, choose skip.
+Output only the challenge-plan block.
+```
+
+Write the challenge selector's full output to `<worktree_path>/.theodore/challenge-plan-cycle-<N>.md`.
+Parse the `challenge-plan` block with:
+```bash
+"${PLUGIN_ROOT}/scripts/extract-challenge-plan.sh" --input <worktree_path>/.theodore/challenge-plan-cycle-<N>.md
+```
+Read the `strategy`, `reason`, and `max_probes` fields from the JSON printed on stdout.
+
+**If `strategy: skip`**:
+- Append the skip report to the state file:
+  ```
+  ## Challenge Report (Cycle <N>)
+
+  Strategy: skipped
+  Reason: <reason from challenge-plan>
+  ```
+- Report "Challenge skipped: <reason>."
+- Immediately proceed to Step 3.
+
+**If `strategy: logic-mutation`**, continue to 2b-2.
+
+**If `extract-challenge-plan.sh` exits nonzero**:
+- Treat the challenge as skipped with reason: `Challenge selector did not return a valid plan.`
+- Append the skip report to the state file and immediately proceed to Step 3.
+
+### 2b-2: Logic Mutation Challenge
+
+Dispatch a **general-purpose Agent** (model: `builder_model` from state):
+```
+You are a Logic Mutation Challenge agent in a Theodore build/review loop.
+
+Working directory: <worktree_path>
+Plugin root: <PLUGIN_ROOT>
+Test command: <test_command>
+Cycle start tag: theodore/cycle-<N>-start
+Probe budget: <max_probes from challenge-plan>
 
 Read these files:
 1. Mutation testing playbook: <PLUGIN_ROOT>/skills/theodore/references/mutation-testing-playbook.md
 2. State file: <worktree_path>/.theodore/state.md (for spec context and builder study)
 
-Follow the playbook exactly. Only mutate files and lines touched in this cycle.
+Follow the playbook exactly. Only mutate implementation files and lines changed since
+the cycle start tag. Never rely on HEAD~1 for cycle 1 or for uncommitted changes.
+Run no more than the probe budget.
 ```
 
-**After the mutation agent returns**, verify the worktree is clean (no leftover mutations):
+**After the mutation agent returns**, verify no mutation is left behind by comparing the
+current worktree to the cycle-start baseline. The diff should contain only the Builder's
+intended changes for this cycle, not any temporary mutant edits:
 ```bash
-git -C <worktree_path> diff
+"${PLUGIN_ROOT}/scripts/cycle-diff.sh" --worktree <worktree_path> --cycle <N>
 ```
-If the diff is non-empty, a mutation was not properly reverted. Reset the worktree:
+Compare this diff to the pre-mutation cycle diff if you captured it, or inspect the
+reported mutation locations. If any temporary mutation remains, restore only the mutated
+file(s) to the Builder's intended version. Do NOT run a whole-worktree reset, because the
+Builder's cycle changes are intentionally uncommitted at this point.
+
+If you cannot confidently restore only the leaked mutation, dispatch the Builder in fix
+mode with the mutation report and current diff. Do not discard unrelated cycle changes.
+
+For a targeted restore from the cycle-start tag, use only when the entire file contains
+no intended Builder changes:
 ```bash
-git -C <worktree_path> checkout -- .
+git -C <worktree_path> checkout "theodore/cycle-<N>-start" -- <mutated_file>
 ```
 Then run the test suite once more to confirm the code is in a passing state:
 ```bash
 bash -c 'cd <worktree_path> && <test_command>'
 ```
-If tests fail after this safety check, a mutation leaked into the code. Dispatch the builder agent in fix mode (same as the VERIFY retry loop) before proceeding.
+If tests fail after this safety check, a mutation may have leaked into the code. Dispatch
+the builder agent in fix mode (same as the VERIFY retry loop) before proceeding.
 
-**Parse the mutation report.**
+**Parse the mutation challenge report.**
 
-- If **all mutants killed**: report "Mutation testing passed: <N>/<N> mutants killed." and **immediately proceed to Step 3 -- do not stop here.**
+- If **all mutants killed**:
+  - Append the challenge report to the state file:
+    ```
+    ## Challenge Report (Cycle <N>)
+
+    Strategy: logic-mutation
+    Result: passed
+    Mutants killed: <N>/<N>
+    ```
+  - Report "Challenge passed: logic mutation killed <N>/<N> mutants." and **immediately proceed to Step 3 -- do not stop here.**
 - If **any mutants survived**: these become automatic findings. For each survived mutant, create a finding with a sequential ID (starting from `[M1]` to distinguish from reviewer findings):
   ```
   [M1] testing/major <file>:<line> -- Mutation survived: <description> -> Add test that catches this case
   ```
   Append these findings to the state file under a new section:
   ```
-  ## Mutation Findings (Cycle <N>)
+  ## Challenge Report (Cycle <N>)
+
+  Strategy: logic-mutation
+  Result: findings
 
   <survived mutant findings>
   ```
   Do NOT proceed to publish or review. Instead, loop back to **Step 1 (BUILD)** for the next cycle,
-  incrementing the cycle counter. The builder will see these mutation findings and must add tests
+  incrementing the cycle counter. The builder will see these challenge findings and must add tests
   to cover the gaps before the code goes to review.
 
   If this was the last cycle (`cycle == max_cycles`), update state: `phase: max_cycles_reached`,
   `active: false`, report the surviving mutants to the user, and stop.
+  ```bash
+  "${PLUGIN_ROOT}/scripts/state-set.sh" --state <worktree_path>/.theodore/state.md --phase max_cycles_reached --active false
+  ```
 
 ### Step 3: PUBLISH
 
-Update state file: set `phase: publish`
+Update state file:
+```bash
+"${PLUGIN_ROOT}/scripts/state-set.sh" --state <worktree_path>/.theodore/state.md --phase publish
+```
 
 Run these git commands from the worktree:
 ```bash
@@ -414,7 +514,10 @@ gh pr create --repo <repo_path> --head <branch_name> --title "theodore: <SPEC_NA
 EOF
 )"
 ```
-Parse the PR URL and number from gh output. Update the state file: set `pr_number` and `pr_url`.
+Parse the PR URL and number from gh output. Update the state file:
+```bash
+"${PLUGIN_ROOT}/scripts/state-set.sh" --state <worktree_path>/.theodore/state.md --pr-number <pr_number> --pr-url <pr_url>
+```
 
 **Cycle 2+** (PR already exists):
 ```bash
@@ -428,13 +531,13 @@ gh pr comment <pr_number> --repo <repo_path> --body "$(cat <<'EOF'
 ### Findings Addressed
 - [F1]: <what was done>
 - [F2]: <what was done>
-- [M1]: <what was done> (if mutation findings existed)
+- [M1]: <what was done> (if challenge findings existed)
 
 ### Tests Added
 - <test descriptions from builder summary>
 
-### Mutations
-- <N>/<N> killed (or "No mutation cycle" if mutations passed on previous cycle)
+### Challenge
+- <strategy and result: passed, findings, or skipped>
 EOF
 )"
 ```
@@ -443,7 +546,10 @@ Report PR status to user (1-2 sentences max). **Immediately proceed to Step 4 --
 
 ### Step 4: REVIEW
 
-Update state file: set `phase: review`
+Update state file:
+```bash
+"${PLUGIN_ROOT}/scripts/state-set.sh" --state <worktree_path>/.theodore/state.md --phase review
+```
 
 Dispatch a **general-purpose Agent** (model: `reviewer_model` from state).
 
@@ -490,12 +596,20 @@ Output your verdict as a json-verdict code block.
 
 ### Step 5: Check Verdict
 
-Parse the reviewer agent's output for the `json-verdict` code block. Extract the JSON object and read the `verdict` and `findings` fields.
+Write the reviewer agent's full output to `<worktree_path>/.theodore/review-cycle-<N>.md`.
+Parse the `json-verdict` block with:
+```bash
+"${PLUGIN_ROOT}/scripts/extract-verdict.sh" --input <worktree_path>/.theodore/review-cycle-<N>.md
+```
+Read the `verdict` and `findings` fields from the JSON printed on stdout.
 
 **If no `json-verdict` block is found**: Treat as CHANGES_REQUESTED with a single finding: `[F1] conventions/major orchestrator:0 -- Reviewer output missing json-verdict block -> Re-review with proper verdict format`. **Immediately continue the loop — do not stop here.**
 
 **`"verdict": "APPROVED"`**
 - Update state: `phase: complete`, `active: false`
+  ```bash
+  "${PLUGIN_ROOT}/scripts/state-set.sh" --state <worktree_path>/.theodore/state.md --phase complete --active false
+  ```
 - If the `findings` array is non-empty (1-2 minor notes), append them to the state file for reference
 - Comment on the PR: `gh pr comment <pr_number> --repo <repo_path> --body "Theodore: Reviewer approved at cycle <N>. PR ready for human review."`
 - Clean up the worktree (the branch and PR persist on the remote):
@@ -515,6 +629,9 @@ Parse the reviewer agent's output for the `json-verdict` code block. Extract the
   ```
 - If this was the last cycle (`cycle == max_cycles`):
   - Update state: `phase: max_cycles_reached`, `active: false`
+    ```bash
+    "${PLUGIN_ROOT}/scripts/state-set.sh" --state <worktree_path>/.theodore/state.md --phase max_cycles_reached --active false
+    ```
   - Clean up the worktree (the branch and PR persist on the remote):
     ```bash
     git -C <repo_path> worktree remove <worktree_path> --force

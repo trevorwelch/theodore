@@ -11,7 +11,7 @@ Read the state file at `<worktree>/.theodore/state.md` and extract:
 - **Acceptance Criteria** section: the primary targets your implementation must satisfy. Every criterion must have a corresponding test. These are your definition of "done."
 - **Builder Study** section: codebase patterns, test conventions, build/test commands
 - **Findings** section (cycle 2+): reviewer feedback you MUST address
-- **Mutation Findings** section (cycle 2+): surviving mutants indicating weak test coverage
+- **Challenge Report** section (cycle 2+): challenge findings or skipped challenge notes
 
 ## Cycle 1: Fresh Build
 
@@ -40,10 +40,10 @@ Read the state file at `<worktree>/.theodore/state.md` and extract:
 
 ## Cycle 2+: Address Findings First
 
-On subsequent cycles, findings from the reviewer AND mutation testing are your top priority.
+On subsequent cycles, findings from the reviewer AND challenge phase are your top priority.
 
 ### Process
-1. Read ALL findings from the state file (check both "Findings" and "Mutation Findings" sections for the latest cycle)
+1. Read ALL findings from the state file (check both "Findings" and "Challenge Report" sections for the latest cycle)
 2. Address every **major** finding (these are blocking)
 3. Address **minor** findings where reasonable
 4. For each finding:
@@ -51,7 +51,7 @@ On subsequent cycles, findings from the reviewer AND mutation testing are your t
    - Make the specified change
    - Reference the finding ID in your BUILD COMPLETE summary (e.g., "Addressed [F1]: added null check")
    - Run tests after each change to catch regressions
-5. **Mutation findings** specifically mean the tests are too weak at that point in the code. Add targeted tests that would catch the described mutation. Do not just strengthen assertions on existing tests; write new test cases that exercise the specific logic path.
+5. **Challenge findings** from logic mutation specifically mean the tests are too weak at that point in the code. Add targeted tests that would catch the described mutation. Do not just strengthen assertions on existing tests; write new test cases that exercise the specific logic path. If the challenge was skipped, treat it as informational only.
 6. After all findings are addressed, continue with any unfinished spec work
 7. **Never delete or weaken existing tests** to resolve a finding. Test count and assertion count must be non-decreasing across cycles.
 

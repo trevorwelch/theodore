@@ -71,7 +71,10 @@ if ! git -C "$REPO_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 # Sanitize spec name: lowercase, alphanumeric + hyphens only, no leading/trailing hyphens
-SAFE_NAME=$(echo "$SPEC_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
+SAFE_NAME=$(printf '%s' "$SPEC_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+if [[ -z "$SAFE_NAME" ]]; then
+  SAFE_NAME="spec"
+fi
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BRANCH_NAME="theodore/${SAFE_NAME}-${TIMESTAMP}"
 WORKTREE_DIR="${REPO_PATH}/.claude/worktrees/theodore-${SAFE_NAME}-${TIMESTAMP}"
@@ -91,8 +94,8 @@ fi
 # Create branch from current HEAD
 git branch "$BRANCH_NAME" HEAD
 
-# Create worktree
-git worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
+# Create worktree. Keep stdout machine-readable for the orchestrator.
+git worktree add -q "$WORKTREE_DIR" "$BRANCH_NAME"
 
 # Ensure .theodore dir exists in worktree for state file
 mkdir -p "${WORKTREE_DIR}/.theodore"

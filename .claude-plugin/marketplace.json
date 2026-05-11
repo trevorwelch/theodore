@@ -1,0 +1,14 @@
+{
+  "name": "theodore",
+  "description": "Local marketplace for the Theodore autonomous build/review plugin",
+  "owner": {
+    "name": "dial481"
+  },
+  "plugins": [
+    {
+      "name": "theodore",
+      "source": "./",
+      "description": "Dual-agent autonomous build/review loop"
+    }
+  ]
+}
